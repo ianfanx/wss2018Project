@@ -13,9 +13,10 @@ calculateReward::usage =
 		"calculate the discounted reward of list of reward" 
 
 preprocess::usage = 
-		"preocess data to required format"
+		"name of the game, number of the games startwith, max Epsoide per game, if rendering, random Discount factor, 
+		replay buffer size, gamma of the Q function"
 
-generator::usage = 
+creatGenerator::usage = 
 		"generate processed data"
 quitEnv::usage = 
 		"quit environment"
@@ -27,7 +28,7 @@ $rewardList;
 
 Begin["`Private`"]
 (*---------------------*)
-randomgame[name_,ep_Integer,st_Integer,render_,$env_]:= Module[{
+randomgame[env_,ep_Integer,st_Integer,render_,$env_]:= Module[{
 		states,observation,
 		state,ob,ac,re,action, next
 	},
@@ -142,60 +143,65 @@ preprocess[x_] := Module[{result},(
 	result
 )]
 (*---------------------*)
-random = 0
-generator := Function[(
-	If[#AbsoluteBatch == 0, 
-	processed = <|"action"->{},"observation"->{},"next"->{},"reward"->{}|>;
-	$rewardList = {};
-	$env=RLEnvironmentCreate["WLCartPole"];
-	best = 0;
-	];
-	If[#AbsoluteBatch == 0, 
-		experience = preprocess[game[20,10000,#Net, False, Power[0.98,#AbsoluteBatch], $env]]
-		,
-		experience = preprocess[game[1,10000,#Net, False, Power[0.98,#AbsoluteBatch],$env]]
-	];
+creatGenerator[env_, start_, maxEp_, render_, randomDiscount_, replaySize_, gamma_] := Module[
+	{processed, best, experience, reward, len, pos, result, out, temp, temp1, temp2
+	},generator := Function[(
+		If[#AbsoluteBatch == 0, 
+			processed = <|"action"->{},"observation"->{},"next"->{},"reward"->{}|>;
+			$rewardList = {};
+			$env=env;
+			best = 0;
+		];
+		If[#AbsoluteBatch == 0, 
+			experience = preprocess[game[start,maxEp,#Net, render, Power[randomDiscount,#AbsoluteBatch], $env]]
+			,
+			experience = preprocess[game[1,maxEp,#Net, render, Power[randomDiscount,#AbsoluteBatch],$env]]
+		];
+		
+		NotebookDelete[temp];
+		reward = Length[experience["action"]];
+		AppendTo[$rewardList,reward];
+		temp=PrintTemporary[reward];
 	
-	NotebookDelete[temp];
-	reward = Length[experience["action"]];
-	AppendTo[$rewardList,reward];
-	temp=PrintTemporary[reward];
+		If[reward>best,best = reward;bestNet = #Net];
 	
-	If[reward>best,best = reward;bestNet = #Net];
-	
-	If[reward>0,
-		AppendTo[processed["action"],#]&/@experience["action"];
-		AppendTo[processed["observation"],#]&/@experience["observation"];
-		AppendTo[processed["next"],#]&/@experience["next"];
-		AppendTo[processed["reward"],#]&/@experience["reward"];
-	];
+		If[reward>0,
+			AppendTo[processed["action"],#]&/@experience["action"];
+			AppendTo[processed["observation"],#]&/@experience["observation"];
+			AppendTo[processed["next"],#]&/@experience["next"];
+			AppendTo[processed["reward"],#]&/@experience["reward"];
+		];
 
-	len = Length[processed["action"]] - 1000;
-	If[len > 0, 
-		processed["action"] = processed["action"][[len;;]];
-		processed["observation"] = processed["observation"][[len;;]];
-		processed["next"] = processed["next"][[len;;]];
-		processed["reward"] = processed["reward"][[len;;]];
-	];
+		len = Length[processed["action"]] - replaySize;
+		If[len > 0, 
+			processed["action"] = processed["action"][[len;;]];
+			processed["observation"] = processed["observation"][[len;;]];
+			processed["next"] = processed["next"][[len;;]];
+			processed["reward"] = processed["reward"][[len;;]];
+		];
 	
-	pos = RandomInteger[{1,Length[processed["action"]]},#BatchSize];
-	(*pos = Range[Length[processed["action"]+1]];*)
+		pos = RandomInteger[{1,Length[processed["action"]]},#BatchSize];
+		(*pos = Range[Length[processed["action"]+1]];*)
 	
-	result = <||>;
-	result["Input"] = processed["observation"][[pos]];
-	out = Values[#Net[processed["observation"][[pos]],"Probabilities"]];
-	
-	temp1 = processed["reward"][[pos]];
-	temp2 = 0.95*Max[Values[#]]&/@#Net[processed["next"][[pos]],"Probabilities"];
-	temp = temp1 + temp2;
+		result = <||>;
+		result["Input"] = processed["observation"][[pos]];
+		out = Values[#Net[processed["observation"][[pos]],"Probabilities"]];
+		
+		temp1 = processed["reward"][[pos]];
+		temp2 = gamma*Max[Values[#]]&/@#Net[processed["next"][[pos]],"Probabilities"];
+		temp = temp1 + temp2;
 
-	(*hardcoded for pong*)
-	MapIndexed[
-		(out[[First@#2,(#1+1)]]=temp[[First@#2]])&,(processed["action"][[pos]])
-	];
-	result["Output"] = out;
-	result
-)];
+		(*hardcoded for pong*)
+		MapIndexed[
+			(out[[First@#2,(#1+1)]]=temp[[First@#2]])&,(processed["action"][[pos]])
+		];
+		result["Output"] = out;
+		result
+	)];
+	generator
+]
+
+
 
 quitEnv := Function[
 	RLEnvironmentClose[$env];
@@ -211,6 +217,9 @@ getList := Function[
 End[ ];
 
 EndPackage[ ]
+
+
+
 
 
 
