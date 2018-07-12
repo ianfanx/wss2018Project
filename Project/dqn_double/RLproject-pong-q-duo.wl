@@ -214,7 +214,7 @@ creatGenerator[env_, start_:20, maxEp_:10000, render_:False, randomDiscount_:0.9
 		(*Q(s,a) = R(s,a) + Q(s',a')*)
 		temp = temp1 + temp2;
 		MapIndexed[
-			(out[[First@#2,(#1+1)]]=temp[[First@#2]])&,(processed["action"][[pos]]-First[NetExtract[net,"Output"][["Labels"]]])
+			(out[[First@#2,(#1+1)]]=temp[[First@#2]])&,(processed["action"][[pos]]-First[NetExtract[#net,"Output"][["Labels"]]])
 		];
 		result["Output"] = out;
 		result
